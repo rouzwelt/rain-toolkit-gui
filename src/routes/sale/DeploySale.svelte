@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ethers } from "ethers";
+  import { BigNumber, ethers } from "ethers";
   import { concat, formatUnits, parseUnits } from "ethers/lib/utils";
   import { signer, signerAddress } from "svelte-ethers-store";
   import Button from "../../components/Button.svelte";
@@ -8,6 +8,7 @@
   import { getERC20, op, validateFields } from "../../utils";
   import { afterTimestampConfig, Opcode, saleDeploy } from "./sale";
   import { DatePicker, CalendarStyle } from "@beyonk/svelte-datepicker";
+import OverFlowMenuItem from "src/components/overflow-menu/OverFlowMenuItem.svelte";
 
   let fields: any = {};
   let deployPromise;
@@ -15,18 +16,24 @@
   let reserveErc20;
 
   // some default values for testing
-  let recipient = "0xf6CF014a3e92f214a3332F0d379aD32bf0Fae929";
+  let recipient = "0xa44ab31CB79Ca950f6f6618c8F6d75b6D85b8970";
   let reserve = "0x25a4dd4cd97ed462eb5228de47822e636ec3e31a";
   let startBlock = 24407548;
+  let startTimestamp;
+  let endTimestamp;
+  let balanceReserve;
+  let initWeight;
+  let weightChange;
   let cooldownDuration = 100;
   let saleTimeout = 100;
   let minimumRaise = 1000;
-  let price = 10;
+  let price = 10;  //initial price
   let name = "Raise token";
   let symbol = "rTKN";
   let initialSupply = 1000;
   let distributionEndForwardingAddress = ethers.constants.AddressZero;
   let walletCap = 10;
+  let minWalletCap = 2;
   let tier = "0xC064055DFf6De32f44bB7cCB0ca59Cbd8434B2de";
   let minimumStatus = 0;
   let raiseRange;
@@ -45,32 +52,77 @@
     console.log(fieldValues);
 
     // utility functions for converting to token amounts with the req decimals
-    const staticPrice = parseUnits(
-      fieldValues.price.toString(),
-      reserveErc20.erc20decimals
-    );
+    //const staticPrice = parseUnits(
+      //fieldValues.price.toString(),
+      //reserveErc20.erc20decimals);
+    
 
-    const walletCap = parseUnits(fieldValues.walletCap.toString());
+    //initial calculations
+    startTimestamp = Math.floor(raiseRange?.[0].$d.getTime() / 1000);
+    endTimestamp = Math.floor(raiseRange?.[1].$d.getTime() / 1000);
+    let raiseDuration = endTimestamp - startTimestamp;
+    balanceReserve = minimumRaise * 5;  //Br = assuming 5 times the amount of 'minimumRaise' as virtual seed liquidity 
+    initWeight = ( initialSupply * price ) / balanceReserve; //calculating the initial rTKN weight--> price = (Br / Wr) / (Bt / Wt) , Wr = 1 ==> Wt(initial) = (Bt * price) / Br
+    weightChange = ((initWeight - 1) / raiseDuration); //weight change per timestamp
+    
+    
+    //utility functions for converting to BigNumber values (uint)
+    const MinWalletCap = parseUnits(minWalletCap.toString()).sub(1);
+    const MaxWalletCap = parseUnits(fieldValues.walletCap.toString()).add(1);
+    const BalanceReserve = parseUnits(balanceReserve.toString());
+    const InitWeight = parseUnits(initWeight.toString());
+    const WeightChange = parseUnits(weightChange.toFixed(18).toString());
+    const MinWeight = parseUnits(Number('1').toString()); //minimum possible weight for rTKN(=1); to prevent the rTKN weight to go below 1
+
+    console.log(BalanceReserve);
+    console.log(startTimestamp);
+    console.log(InitWeight);
+    console.log(WeightChange);
+    console.log(MinWalletCap);
+    console.log(MaxWalletCap);
+    console.log(MinWeight);
 
     //////////////////
 
-    const constants = [staticPrice, walletCap, ethers.constants.MaxUint256];
+    const constants = [BalanceReserve, MaxWalletCap, ethers.constants.MaxUint256, startTimestamp, InitWeight, WeightChange, MinWeight, MinWalletCap];
 
     const sources = [
-      concat([
+      concat([       
+        op(Opcode.VAL, 1),      
         op(Opcode.CURRENT_BUY_UNITS),
         op(Opcode.TOKEN_ADDRESS),
         op(Opcode.SENDER),
         op(Opcode.ERC20_BALANCE_OF),
         op(Opcode.ADD, 2),
-        op(Opcode.VAL, 1),
         op(Opcode.GREATER_THAN),
-        op(Opcode.VAL, 2),
+        op(Opcode.VAL, 7),
+        op(Opcode.CURRENT_BUY_UNITS),
+        op(Opcode.TOKEN_ADDRESS),
+        op(Opcode.SENDER),
+        op(Opcode.ERC20_BALANCE_OF),
+        op(Opcode.ADD, 2),
+        op(Opcode.LESS_THAN),
+        op(Opcode.EVERY, 2),
+        op(Opcode.TOTAL_RESERVE_IN),
         op(Opcode.VAL, 0),
+        op(Opcode.ADD, 2),
+        op(Opcode.VAL, 4),
+        op(Opcode.BLOCK_TIMESTAMP),
+        op(Opcode.VAL, 3),
+        op(Opcode.SUB, 2),
+        op(Opcode.VAL, 5),
+        op(Opcode.MUL, 2),
+        op(Opcode.SUB, 2),
+        op(Opcode.VAL, 6),
+        op(Opcode.MAX, 2),
+        op(Opcode.MUL, 2),
+        op(Opcode.REMAINING_UNITS),
+        op(Opcode.DIV, 2),
+        op(Opcode.VAL, 2),
         op(Opcode.EAGER_IF),
       ]),
     ];
-
+    
     ////////////////
 
     if (validationResult) {
@@ -86,7 +138,7 @@
           calculatePriceStateConfig: {
             sources,
             constants,
-            stackLength: 10,
+            stackLength: 35,
             argumentsLength: 0,
           },
           recipient: fieldValues.recipient,
@@ -213,6 +265,19 @@
       <span slot="label"> Cap per wallet: </span>
       <span slot="description"
         >The maximum number of raise tokens purchaseable by each eligible
+        address.</span
+      >
+    </Input>
+
+    <Input
+      type="number"
+      bind:this={fields.minWalletCap}
+      bind:value={minWalletCap}
+      validator={defaultValidator}
+    >
+      <span slot="label"> Min Cap per wallet: </span>
+      <span slot="description"
+        >The minimum number of raise tokens purchaseable by each eligible
         address.</span
       >
     </Input>
