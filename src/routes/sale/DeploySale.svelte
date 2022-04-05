@@ -1,5 +1,4 @@
 <script lang="ts">
-  import ContractDeploy from "components/ContractDeploy.svelte";
   import { ethers } from "ethers";
   import { concat, formatUnits, parseUnits } from "ethers/lib/utils";
   import { signer, signerAddress } from "svelte-ethers-store";
@@ -7,30 +6,39 @@
   import FormPanel from "../../components/FormPanel.svelte";
   import Input from "../../components/Input.svelte";
   import { getERC20, op, validateFields } from "../../utils";
-  import { afterTimestampConfig, Opcode, saleDeploy } from "./sale";
+  import { afterTimestampConfigStart, afterTimestampConfigEnd, Opcode, saleDeploy } from "./sale";
   import { DatePicker, CalendarStyle } from "@beyonk/svelte-datepicker";
-
+  
+  
   let fields: any = {};
   let deployPromise;
   let sale, token;
   let reserveErc20;
 
   // some default values for testing
-  let recipient = "0xf6CF014a3e92f214a3332F0d379aD32bf0Fae929";
-  let reserve = "";
+  let recipient = "0xa44ab31CB79Ca950f6f6618c8F6d75b6D85b8970";
+  let reserve = "0x25a4dd4cd97ed462eb5228de47822e636ec3e31a";
   let startBlock = 24407548;
-  let cooldownDuration = 100;
+  let cooldownDuration = 1;
   let saleTimeout = 100;
-  let minimumRaise = 1000;
-  let price = 10;
+  let minimumRaise = 100;
+  let startPrice = 10;
   let name = "Raise token";
   let symbol = "rTKN";
   let initialSupply = 1000;
   let distributionEndForwardingAddress = ethers.constants.AddressZero;
-  let walletCap = 10;
-  let tier = "";
+  let walletCap;
+  let minWalletCap;
+  let tier = "0xC064055DFf6De32f44bB7cCB0ca59Cbd8434B2de";
   let minimumStatus = 0;
   let raiseRange;
+  let endPrice = 20;
+  let extraTime = 30;
+  let extraTimeAmount = 15;
+  let discount = 25;
+  let discountThreshold = 10;
+  
+  
 
   // @TODO write validators
   const defaultValidator = () => {
@@ -43,31 +51,67 @@
 
   const deploy = async () => {
     const { validationResult, fieldValues } = validateFields(fields);
-    let receipt;
+    console.log(fieldValues);
+    
+    //initial calculations
+    let startTime = Math.floor(raiseRange?.[0].$d.getTime() / 1000);
+    let endTime = Math.floor(raiseRange?.[1].$d.getTime() / 1000);
+    let raiseDuration =  endTime - startTime;
+    let priceChange = ( endPrice - startPrice ) / raiseDuration;  //price change per timestamp
+    let discountedPrice = endPrice * ((100 - discount) / 100);  //calculating the discounted price
 
-    // utility functions for converting to token amounts with the req decimals
-    const staticPrice = parseUnits(
-      fieldValues.price.toString(),
-      reserveErc20.erc20decimals
-    );
+// utility functions for converting to token amounts with the req decimals
+    const StartPrice = parseUnits(fieldValues.startPrice.toString(),reserveErc20.erc20decimals);
+    const EndPrice = parseUnits(fieldValues.endPrice.toString(),reserveErc20.erc20decimals);
+    const PriceChange = parseUnits(priceChange.toFixed(18).toString());
+    const ExtraTimeAmount = parseUnits(extraTimeAmount.toString());
+    const DiscountedPrice = parseUnits(discountedPrice.toString(),reserveErc20.erc20decimals);
+    const Threshold = parseUnits(discountThreshold.toString());
+    const MaxWalletCap = walletCap == '' || 0 ? ethers.constants.MaxUint256 : parseUnits(fieldValues.walletCap.toString()).add(1);
+    const MinWalletCap = minWalletCap == '' ? 0 : parseUnits(fieldValues.minWalletCap.toString()).sub(1);
 
-    const walletCap = parseUnits(fieldValues.walletCap.toString());
 
     //////////////////
 
-    const constants = [staticPrice, walletCap, ethers.constants.MaxUint256];
+    const constants = [StartPrice, EndPrice, PriceChange, startTime, endTime, Threshold, DiscountedPrice, MaxWalletCap, MinWalletCap, ethers.constants.MaxUint256];
 
     const sources = [
       concat([
+        op(Opcode.VAL, 7),
         op(Opcode.CURRENT_BUY_UNITS),
         op(Opcode.TOKEN_ADDRESS),
         op(Opcode.SENDER),
         op(Opcode.ERC20_BALANCE_OF),
         op(Opcode.ADD, 2),
-        op(Opcode.VAL, 1),
         op(Opcode.GREATER_THAN),
+        op(Opcode.VAL, 8),
+        op(Opcode.CURRENT_BUY_UNITS),
+        op(Opcode.TOKEN_ADDRESS),
+        op(Opcode.SENDER),
+        op(Opcode.ERC20_BALANCE_OF),
+        op(Opcode.ADD, 2),
+        op(Opcode.LESS_THAN),
+        op(Opcode.EVERY, 2),
+        op(Opcode.BLOCK_TIMESTAMP),
+        op(Opcode.VAL, 4),
+        op(Opcode.GREATER_THAN),
+        op(Opcode.TOKEN_ADDRESS),
+        op(Opcode.SENDER),
+        op(Opcode.ERC20_BALANCE_OF),
+        op(Opcode.VAL, 6),
+        op(Opcode.GREATER_THAN),
+        op(Opcode.VAL, 5),
+        op(Opcode.VAL, 1),
+        op(Opcode.EAGER_IF),
+        op(Opcode.BLOCK_TIMESTAMP),
+        op(Opcode.VAL, 3),
+        op(Opcode.SUB, 2),
         op(Opcode.VAL, 2),
+        op(Opcode.MUL, 2),
         op(Opcode.VAL, 0),
+        op(Opcode.ADD, 2),
+        op(Opcode.EAGER_IF),
+        op(Opcode.VAL, 9),
         op(Opcode.EAGER_IF),
       ]),
     ];
@@ -75,19 +119,20 @@
     ////////////////
 
     if (validationResult) {
-      return await saleDeploy(
+      sale = await saleDeploy(
         $signer,
         {
-          canStartStateConfig: afterTimestampConfig(
-            Math.floor(raiseRange?.[0].$d.getTime() / 1000)
+          canStartStateConfig: afterTimestampConfigStart(
+            startTime
           ),
-          canEndStateConfig: afterTimestampConfig(
-            Math.floor(raiseRange?.[1].$d.getTime() / 1000)
+          canEndStateConfig: afterTimestampConfigEnd(
+            endTime, endTime+(extraTime * 60), ExtraTimeAmount
           ),
+
           calculatePriceStateConfig: {
             sources,
             constants,
-            stackLength: 10,
+            stackLength: 30,
             argumentsLength: 0,
           },
           recipient: fieldValues.recipient,
@@ -114,7 +159,6 @@
       );
     }
   };
-
   const getReserveErc20 = async () => {
     if (fields.reserve.validate()) {
       reserveErc20 = await getERC20(reserve, $signer, $signerAddress);
@@ -124,6 +168,8 @@
   $: if (reserve && fields?.reserve) {
     getReserveErc20();
   }
+
+  $: console.log($signer, $signerAddress);
 </script>
 
 <div class="flex w-3/4 flex-col gap-y-4">
@@ -133,7 +179,7 @@
   </div>
   <FormPanel heading="Sale config">
     <Input
-      type="address"
+      type="text"
       bind:this={fields.recipient}
       bind:value={recipient}
       validator={defaultValidator}
@@ -142,7 +188,7 @@
     </Input>
 
     <Input
-      type="address"
+      type="text"
       bind:this={fields.reserve}
       bind:value={reserve}
       validator={defaultValidator}
@@ -197,25 +243,102 @@
 
     <Input
       type="number"
-      bind:this={fields.price}
-      bind:value={price}
+      bind:this={fields.startPrice}
+      bind:value={startPrice}
       validator={defaultValidator}
     >
-      <span slot="label"> Price: </span>
+      <span slot="label">Start Price: </span>
     </Input>
 
     <Input
       type="number"
-      bind:this={fields.walletCap}
-      bind:value={walletCap}
+      bind:this={fields.endPrice}
+      bind:value={endPrice}
       validator={defaultValidator}
     >
-      <span slot="label"> Cap per wallet: </span>
+      <span slot="label"> End Price: </span>
       <span slot="description"
         >The maximum number of raise tokens purchaseable by each eligible
         address.</span
       >
     </Input>
+
+    <Input
+    type="number"
+    bind:this={fields.walletCap}
+    bind:value={walletCap}
+    validator={defaultValidator}
+  >
+    <span slot="label"> Max Cap per wallet: </span>
+    <span slot="description"
+      >The maximum number of raise tokens purchaseable by each eligible
+      address.</span
+    >
+  </Input>
+
+  <Input
+  type="number"
+  bind:this={fields.minWalletCap}
+  bind:value={minWalletCap}
+  validator={defaultValidator}
+>
+  <span slot="label"> Min Cap per wallet: </span>
+  <span slot="description"
+    >The minimum number of raise tokens purchaseable by each eligible
+    address.</span
+  >
+</Input>
+
+    <Input
+    type="number"
+    bind:this={fields.extraTime}
+    bind:value={extraTime}
+    validator={defaultValidator}
+  >
+    <span slot="label"> Extra Time: </span>
+    <span slot="description"
+      >Specify the amount of extra time (in mnutes) you want the raise to run if you have raised X amount before end of the raise:</span
+    >
+  </Input>
+  
+  <Input
+  type="number"
+  bind:this={fields.extraTimeAmount}
+  bind:value={extraTimeAmount}
+  validator={defaultValidator}
+>
+  <span slot="label">Extra Time trigger amount:</span>
+  <span slot="description"
+    >Specify the amount in percentage that needs to be raised before end of the raise to go into extra time:</span
+  >
+</Input>
+
+<Input
+  type="number"
+  bind:this={fields.discountThreshold}
+  bind:value={discountThreshold}
+  validator={defaultValidator}
+>
+  <span slot="label">Discount Threshold:</span>
+  <span slot="description"
+    >Amount that each wallet had to be purchased to be eligible for the extra time discount.</span
+  >
+</Input>
+
+<Input
+  type="number"
+  bind:this={fields.discount}
+  bind:value={discount}
+  validator={defaultValidator}
+>
+  <span slot="label">Discount:</span>
+  <span slot="description"
+    >Discount percentage.</span
+  >
+</Input>
+
+
+
   </FormPanel>
 
   <FormPanel heading="RedeemableERC20 config">
@@ -247,7 +370,7 @@
     </Input>
 
     <Input
-      type="address"
+      type="text"
       bind:this={fields.distributionEndForwardingAddress}
       bind:value={distributionEndForwardingAddress}
       validator={defaultValidator}
@@ -261,7 +384,7 @@
     </Input>
 
     <Input
-      type="address"
+      type="text"
       bind:this={fields.tier}
       bind:value={tier}
       validator={defaultValidator}
@@ -283,10 +406,18 @@
   </FormPanel>
 
   <FormPanel>
-    {#if !deployPromise}
-      <Button shrink on:click={handleClick}>Deploy Sale</Button>
-    {:else}
-      <ContractDeploy {deployPromise} type="Sale" />
+    <Button shrink on:click={handleClick}>Deploy Sale</Button>
+
+    {#if deployPromise}
+      <div class="flex flex-col gap-y-2 text-blue-300">
+        {#await deployPromise}
+          ...deploying
+        {:then}
+          deployed
+          <span>Sale contract: {sale.address}</span>
+          <!-- <span>RedeemableERC20 token address: {token.address}</span> -->
+        {/await}
+      </div>
     {/if}
   </FormPanel>
 </div>

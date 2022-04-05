@@ -91,7 +91,9 @@ export const saleDeploy = async (
   saleRedeemableERC20Config: SaleRedeemableERC20Config,
   ...args
 ): Promise<Contract> => {
-
+  console.log(config);
+  console.log(saleRedeemableERC20Config);
+  console.log(config.calculatePriceStateConfig.constants[0].toString());
   const saleFactory = new ethers.Contract(
     get(selectedNetwork).addresses.SALE_FACTORY,
     SaleFactoryArtifact.abi,
@@ -103,8 +105,32 @@ export const saleDeploy = async (
     ...args
   );
   const receipt = await txDeploy.wait();
+  const saleContractAddress = getNewChildFromReceipt(receipt, saleFactory);
+  const sale = new ethers.Contract(
+    saleContractAddress,
+    SaleArtifact.abi,
+    deployer
+  ) as Contract;
 
-  return receipt;
+  if (!ethers.utils.isAddress(sale.address)) {
+    throw new Error(
+      `invalid sale address: ${sale.address} (${sale.address.length} chars)`
+    );
+  }
+
+  // await sale.deployed();
+
+  // // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // // @ts-ignore
+  // sale.deployTransaction = txDeploy;
+
+  // const token = new ethers.Contract(
+  //   await sale.token(),
+  //   RedeemableERC20Artifact.abi,
+  //   deployer
+  // ) as Contract;
+
+  return sale;
 };
 
 export const afterBlockNumberConfig = (blockNumber) => {
@@ -123,7 +149,7 @@ export const afterBlockNumberConfig = (blockNumber) => {
   };
 };
 
-export const afterTimestampConfig = (timestamp) => {
+export const afterTimestampConfigStart = (timestamp) => {
   return {
     sources: [
       concat([
@@ -139,16 +165,40 @@ export const afterTimestampConfig = (timestamp) => {
   };
 };
 
-export const getAfterTimestampDate = (stateConfig) => {
-  if (stateConfig.sources[0] === "0x050001000b00") {
-    return new Date(parseInt(stateConfig.constants[0]) * 1000);
+export const afterTimestampConfigEnd = (timestampEnd, timestampExtra, amount) => {
+  return {
+    sources: [
+      concat([
+        // (BLOCK_NUMBER blockNumberSub1 gt)
+        op(Opcode.BLOCK_TIMESTAMP),
+        op(Opcode.VAL, 0),
+        op(Opcode.GREATER_THAN),
+        op(Opcode.TOTAL_RESERVE_IN),
+        op(Opcode.VAL, 2),
+        op(Opcode.LESS_THAN),
+        op(Opcode.EVERY, 2),
+        op(Opcode.BLOCK_TIMESTAMP),
+        op(Opcode.VAL, 1),
+        op(Opcode.GREATER_THAN),
+        op(Opcode.ANY, 2),
+      ]),
+    ],
+    constants: [timestampEnd, timestampExtra, amount],
+    stackLength: 20,
+    argumentsLength: 0,
+  };
+};
+
+export const getAfterTimestampDate = (stateConfig, i) => {
+  if (stateConfig.sources[0] === "0x050001000b00" || stateConfig.sources[0] === "0x050001000b00230001020a000c02050001010b000d02") {
+    return new Date(parseInt(stateConfig.constants[i]) * 1000);
   }
 };
 
 
-export const getAfterTimestamp = (stateConfig) => {
-  if (stateConfig.sources[0] === "0x050001000b00") {
-    return parseInt(stateConfig.constants[0]);
+export const getAfterTimestamp = (stateConfig, i) => {
+  if (stateConfig.sources[0] === "0x050001000b00" || stateConfig.sources[0] === "0x050001000b00230001020a000c02050001010b000d02") {
+    return parseInt(stateConfig.constants[i]);
   }
 };
 
