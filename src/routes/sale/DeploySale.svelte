@@ -100,7 +100,6 @@
         op(Opcode.ERC20_BALANCE_OF),
         op(Opcode.VAL, 5),
         op(Opcode.GREATER_THAN),
-        op(Opcode.EVERY, 2),
         op(Opcode.VAL, 6),
         op(Opcode.VAL, 1),
         op(Opcode.EAGER_IF),
