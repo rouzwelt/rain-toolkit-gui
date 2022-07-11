@@ -1,3 +1,4 @@
+import { each } from 'svelte/internal';
 import { derived, get, Readable, Writable, writable } from 'svelte/store';
 import { selectedNetwork } from './stores';
 
@@ -165,19 +166,20 @@ const addressesDefault: LocalLibrary = new Map([
 
 const createLocalLibrary = (selectedNetworkStore: typeof selectedNetwork) => {
 
-    const stored = localStorage.getItem('rainAddresses')
-    let parsedTemp1 = addressesDefault
+    const stored = localStorage.getItem('rainAddresses');
+    let parsedTemp1 = addressesDefault;
     let parsedTemp2 = JSON.parse(stored, reviver);
-    for (let i = 0; i < Object.keys(addressesDefault).length; i++) {
-        for (let j = 0; j < Object.keys(parsedTemp2).length; j++) {
-            if (Object.keys(parsedTemp1)[i] === Object.keys(parsedTemp2)[j]) {
-                parsedTemp1[i] = parsedTemp2[j];
+
+    for (let key1 in parsedTemp1) {
+        for (let key2 in parsedTemp2) {
+            if (key1 === key2) {
+                parsedTemp1[key1] = parsedTemp2[key2];
             }
         }
     }
+    
     const parsed = parsedTemp1;
-    //const parsed = stored ? JSON.parse(stored, reviver) : addressesDefault
-
+    
     const { subscribe, update } = writable(parsed)
 
     subscribe(v => localStorage.setItem('rainAddresses', JSON.stringify(v, replacer)))

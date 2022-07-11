@@ -60,7 +60,7 @@
       let a = state.stack.pop();
       if (a == BigNumber.from("15"))
         state.stack.push(BigNumber.from(ethers.constants.Zero));
-      else state.stack.push(BigNumber.from(data.blockNumber));
+      else state.stack.push(BigNumber.from("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffff00000000"));
     },
     // skip the CLAIMANT_ACCOUNT opcode
     [EmissionsERC20JS.Opcodes.CLAIMANT_ACCOUNT]: (
@@ -125,6 +125,7 @@
 
     // executing the simulation
     initSimul();
+    
   }
 
   // refresh function
@@ -177,7 +178,7 @@
 
 <div class="flex w-full flex-col gap-y-4">
   <div class="flex flex-row justify-between">
-    <span class="text-lg font-semibold">Claimable Units Simulation Chart</span>
+    <span class="text-lg font-semibold">Claimable Units Simulation Chart (Tier 1)</span>
     <span class:animate-spin={spinner} on:click={refresh}
       ><IconLibrary icon="reload" /></span
     >
