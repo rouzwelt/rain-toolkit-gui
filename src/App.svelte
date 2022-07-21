@@ -31,6 +31,7 @@
   import ListTransferTier from "./routes/erc20-transfer-tier/ListTransferTier.svelte";
   import DeployERC20 from "./routes/mint-erc20/DeployERC20.svelte";
   import MintFromExistingERC20 from "./routes/mint-erc20/MintFromExistingERC20.svelte";
+  import HoldingTimeTransferTier from "./routes/combine-tier/HoldingTimeTransferTier.svelte";
 
 
   let routes = {};
@@ -46,6 +47,7 @@
     "/erc721balancetier/list": ListERC721BalanceTier,
 
     "/combinetier/deploy": DeployCombineTier,
+    "/combinetier/deployHoldingTimeTransferTier": HoldingTimeTransferTier,
     "/combinetier/report/*": CombineTierReport,
     "/combinetier/list": ListCombineTier,
 

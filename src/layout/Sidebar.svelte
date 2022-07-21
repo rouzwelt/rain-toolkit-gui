@@ -50,6 +50,8 @@
     <SidebarLinkGroup label="CombineTier" url="/combinetier/*">
       <SidebarLink url="/combinetier/deploy">Deploy a CombineTier</SidebarLink>
 
+      <SidebarLink url="/combinetier/deployHoldingTimeTransferTier">Deploy a HasHeldFor CombineTier</SidebarLink>
+
       <SidebarLink url="/combinetier/report/">
         Check a CombineTier Report
       </SidebarLink>

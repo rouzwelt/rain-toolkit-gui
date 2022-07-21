@@ -88,14 +88,25 @@
     }
     if (contractType.toLowerCase() === "combinetier") {
       try {
-        combineTierSource = HumanFriendlySource.get(
+        if (FriendlySource.tierContract && FriendlySource.blocks) {
+          combineTierSource = HumanFriendlySource.get(
+            new CombineTierGenerator(FriendlySource.tierContract).isTierHeldFor(
+              FriendlySource.blocks
+            ),
+            { contract: "combinetier", pretty: true }
+          )
+        }
+        else {
+          combineTierSource = HumanFriendlySource.get(
           new CombineTierGenerator(FriendlySource.tierContractOne).combineWith(
             FriendlySource.tierContractTwo,
             FriendlySource.logicValue,
             FriendlySource.modeValue
           ),
-          { contract: "combineTier", pretty: true }
+          { contract: "combinetier", pretty: true }
         );
+        }
+
       } catch (error) {
         errorMsg = error;
         err = true;
