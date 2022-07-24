@@ -13,6 +13,10 @@
   import { queryStore } from "@urql/svelte";
   import { client } from "src/stores";
   import { selectedNetwork } from "src/stores";
+  import { getContext } from "svelte";
+  import SimpleTransactionModal from "src/components/SimpleTransactionModal.svelte";
+
+  const { open } = getContext("simple-modal");
 
   export let params: {
     wild: string;
@@ -32,6 +36,7 @@
     parsedReport,
     claimableBlockNumber;
   let claimantAddress = $signerAddress;
+  let claimed = false;
 
   $: if (params.wild || $signer) {
     initPromise = initContract();
@@ -112,12 +117,20 @@
     return claim;
   };
 
+  let returnValue = (method, receipt) => {};
+
   const claim = async () => {
-    const tx = await erc20Contract.claim(
-      $signerAddress,
-      ethers.constants.AddressZero
-    );
-    return await tx.wait();
+    await open(SimpleTransactionModal, {
+      method: erc20Contract.claim,
+      args: [claimantAddress, ethers.constants.AddressZero],
+      confirmationMsg: "Claim Completed",
+      returnValue,
+    });
+
+    returnValue = (method, receipt) => {
+      claimed = true;
+      return receipt;
+    };
   };
 </script>
 
@@ -279,9 +292,10 @@
               {#if claimPromise}
                 {#await claimPromise}
                   Minting...
-                {:then}
-                  Mint complete! Refresh to see your new balance.
                 {/await}
+                {#if claimed}
+                  Claim complete! Refresh to see your new balance.
+                {/if}
               {/if}
             {/if}
           </FormPanel>
