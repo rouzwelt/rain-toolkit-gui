@@ -4,21 +4,32 @@
   import { selectedNetwork } from "src/stores";
   import { ContractReceipt } from "ethers";
   import Button from "./Button.svelte";
+  import { Logger } from "ethers/lib/utils";
 
   enum TxStatus {
     None,
     AwaitingSignature,
     AwaitingConfirmation,
     Error,
-    Confirmed
+    Confirmed,
   }
-  
+
   const { close } = getContext("simple-modal");
 
   export let method: Function;
   export let args: any[];
   export let confirmationMsg: string;
+  export let func: string | undefined = undefined;
+
+  export let returnValue: undefined | any = (method) => {};
   let errorMsg: string, receipt: ContractReceipt, txStatus: TxStatus;
+
+  const closed = () => {
+    close();
+    if (func == "approve") {
+      returnValue(true, receipt);
+    } else returnValue(false, receipt);
+  };
 
   onMount(async () => {
     let tx;
@@ -27,15 +38,24 @@
 
     try {
       tx = await method(...args);
+
+      txStatus = TxStatus.AwaitingConfirmation;
+      receipt = await tx.wait();
     } catch (error) {
-      errorMsg = error.data?.message || error?.message;
-      txStatus = TxStatus.Error;
-      return;
+      if (error.code === Logger.errors.TRANSACTION_REPLACED) {
+        if (error.cancelled) {
+          errorMsg = "Transaction Cancelled";
+          txStatus = TxStatus.Error;
+          return;
+        } else {
+          receipt = await error.replacement.wait();
+        }
+      } else {
+        errorMsg = error.data?.message || error?.message;
+        txStatus = TxStatus.Error;
+        return;
+      }
     }
-
-    txStatus = TxStatus.AwaitingConfirmation;
-
-    receipt = await tx.wait();
 
     txStatus = TxStatus.Confirmed;
   });
@@ -66,7 +86,7 @@
     >
       See transaction.
     </a>
-    <Button on:click={close}>Ok</Button>
+    <Button on:click={closed}>Ok</Button>
   </div>
 {/if}
 {#if txStatus == TxStatus.Error}
