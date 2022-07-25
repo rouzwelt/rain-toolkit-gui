@@ -32,6 +32,7 @@
   import DeployERC20 from "./routes/mint-erc20/DeployERC20.svelte";
   import MintFromExistingERC20 from "./routes/mint-erc20/MintFromExistingERC20.svelte";
   import HoldingTimeTransferTier from "./routes/combine-tier/HoldingTimeTransferTier.svelte";
+  import ListFaucets from "./routes/mint-erc20/ListFaucets.svelte";
 
 
   let routes = {};
@@ -71,6 +72,7 @@
 
     "/erc20/deploy": DeployERC20,
     "/erc20/mint/*": MintFromExistingERC20,
+    "/erc20/list": ListFaucets,
 
     "/address-library": AddressLibrary,
 
